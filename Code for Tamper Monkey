@@ -1,0 +1,1926 @@
+// ==UserScript==
+// @icon          https://www.youtube.com/favicon.ico
+// @name        Auto Youtube Chat Sender
+// @author
+// @description   youtube
+// @match         *://www.youtube.com/*
+// @version
+// @grant         none
+// @namespace
+// ==/UserScript==
+
+{
+  if (window.top !== window.self) throw new Error("非顶层框架");
+  const version = "0.1";
+  const randomInt = (min, max) => {
+    if (max < min) return min;
+    return Math.floor(Math.random() * (max - min + 1) + min);
+  };
+
+  // 迷你版渲染器
+  const h = (tagname, attributes = {}, children = [], option = {}) => {
+    if (tagname instanceof Node) return tagname;
+    if (tagname instanceof Array) {
+      const frag = document.createDocumentFragment();
+      tagname.forEach((it) => {
+        if (it instanceof Node) {
+          frag.appendChild(it);
+        } else if (Array.isArray(it)) {
+          frag.appendChild(h(it[0], it[1], it[2], it[3]));
+        } else if (["string", "number"].includes(typeof it) || it) {
+          frag.appendChild(new Text(it));
+        }
+      });
+      return frag;
+    }
+    const el = document.createElement(tagname);
+    Object.entries(attributes).forEach(([key, value]) => {
+      if (key === "style" && typeof value === "object") {
+        Object.assign(el.style, value);
+      } else if (key.startsWith("$")) {
+        if (typeof value === "function") {
+          el.addEventListener(key.slice(1), value);
+        } else {
+          el.addEventListener(key.slice(1), value.handleEvent, value);
+        }
+      } else el.setAttribute(key, value);
+    });
+    if (["string", "number"].includes(typeof children)) {
+      el.textContent = children;
+    } else if (children) {
+      el.appendChild(h(children));
+    }
+    if (typeof option === "function") {
+      option(el);
+    } else if (option.cb) {
+      option.cb(el);
+    }
+    return el;
+  };
+
+  /** toast提示组件，msg可以是渲染器children类型 */
+  const Toast = (msg, toastClass = "dlc-toast", singletonId = "singletonDom") => {
+    if (Toast[singletonId]) Toast[singletonId].remove();
+    const dom = h(
+      "div",
+      {
+        class: toastClass,
+        style: {
+          zIndex: ++Toast.currZIndex,
+        },
+      },
+      [
+        [
+          "button",
+          {
+            class: "dlc-btn",
+            $click: () => {
+              dom.remove();
+              Toast[singletonId] = null;
+            },
+          },
+          "Shut down",
+        ],
+        ["div", {}, msg],
+      ],
+    );
+    if (toastClass === "dlc-alert") setTimeout(() => dom.remove(), 10000);
+    Toast[singletonId] = dom;
+    document.body.appendChild(dom);
+  };
+  Toast.currZIndex = 10000;
+
+  const eventBus = {
+    ee: new EventTarget(),
+    on(type, fn, opt, fnKey = Symbol("dlc.event.type.anonymous")) {
+      this.fnMap.set(fnKey, fn);
+      this.ee.addEventListener(type, fn, opt);
+      return fnKey;
+    },
+    off(type, fn, opt) {
+      this.ee.removeEventListener(type, fn, opt);
+    },
+    emit(type, detail) {
+      const event = new CustomEvent(type, { detail });
+      this.ee.dispatchEvent(event);
+    },
+    fnMap: new Map(),
+  };
+
+  const config = {
+    splitMode: 2, // 断句方式
+    minCycleSec: 6, // 最小发送间隔（秒）
+    maxCycleSec: 0, // 最大发送间隔（秒）
+    randomDanmaku: false, // 是否随机发送
+    text: "", // 发送消息列表
+    maxDanmakuLength: 200, // 最大弹幕字数限制
+    minDanmakuLength: 20, // 最小弹幕长度
+    startTime: "2020-10-24 00:07:00",
+    stopTime: "2020-10-24 00:07:00",
+    splitChar: "，；：。！？…,.!?,", // 断句符
+    remoteDanmakuBase: "",
+    noValidate: false,
+    modList: [],
+    extension: "",
+    lowConsume: false,
+    autoStop: true,
+    infoUrl: "", // api地址
+    startWaitingTime: 100, // 开播等待时间
+    fullAutomation: false,
+    lastLiveUrl: "", // 上次直播地址
+    ammoRefine_Disturb: true, // 弹幕扰动
+    ammoRefine_ToLower: true, // 转换为小写
+    ammoRefine_Cloud: false, // 云弹幕精制
+    ammoRefine_Local: true, // 本地弹幕精制
+    ammoRefine_BanedWordMode: 0, // 屏蔽词处理机制 0 -> 删除， 1 -> 随机改变其中的一个字母
+    ammoToLatin: false,
+    ammoRefineUrl: "",
+    ammoRefineStategy: "",
+  };
+
+  // 保存配置
+  const setAndSave = (prop, target) => {
+    config[prop] = target;
+    localStorage.setItem("duluncheCfg", JSON.stringify(config));
+  };
+  const pressButton = (button) => {
+    if (button.getElementsByTagName("button")[0].getAttribute("aria-pressed") === "false") {
+      // Not pressed
+      console.log("Not pressed");
+      button.click();
+    }
+  };
+  const pressUpVote = () => {
+    pressButton(document.getElementById("top-level-buttons").children[0]);
+  };
+  const pressDownVote = () => {
+    const channelName = document.getElementById("channel-name").getElementsByClassName("yt-simple-endpoint style-scope yt-formatted-string")[0].text;
+   // if (false) {
+   //   pressButton(document.getElementById("top-level-buttons").children[1]);
+  //  }
+  };
+  const getJSON = () => {
+    const { ammoRefineStategy } = config;
+    // console.log(ammoRefineStategy);
+    try {
+      const http = new XMLHttpRequest();
+      http.open("GET", ammoRefineStategy, false);
+      http.send();
+      return JSON.parse(http.responseText);
+    } catch (e) {
+      return {
+        version: "0.1",
+        logs: "0.1 Logs: Try to tranfer to English.",
+        announcement: "unload online annoucement",
+        // "regexs": [{"expr": "\\.", "replace": "_"}, {"expr": "\\,", "replace": "!"}],
+        regexs: [],
+        block_words: ["coco", "politics"],
+        replace_words: { re: "are", ay: "any" },
+        phantom_tank: false,
+      };
+    }
+  };
+  const versionToNumber = (versionString) => parseInt(versionString.replace(/\./g, ""));
+  let refineJson = getJSON();
+  const latinLower = "ḁ̂b̃č͑d́èf̓g̊ḧìj̱k̦l̂m̀n̓ồp̤ꝗ̃ȓśt͑ũ̊v̇w̄x̣ÿ́z̓";
+  const latinUpper = "ÄB̀ČÐĒF̓ĜḦÌJ̱K̦L̂M̀N̓ỒP̤Ꝗ̃ȒŚT͑Ũ̊V̇W̄X̣Ÿ́Z̓";
+  const reLower = /^[a-z]+$/;
+  const reUpper = /^[A-Z]+$/;
+
+  const toLatin = (c) => {
+    if (c.match(reLower) !== null) return latinLower[c.codePointAt() - 97];
+    if (c.match(reUpper !== null)) {
+      return latinUpper[c.codePointAt() - 65];
+    }
+    return c;
+  };
+
+  // 版本更新检测
+  if (versionToNumber(version) < versionToNumber(refineJson.version)) {
+    Toast(`Your version is: ${version}, The latest version is: ${refineJson.version}, It is recommended to update the latest version in  Tamper Monkey。\nUpdate log: \n    ${refineJson.logs}`);
+  }
+
+  const refs = {
+    sendBtn: null,
+    chatTxtInput: null,
+    autoPlayBtn: null,
+    runBtn: null,
+    offlineStateDiv: null,
+    remoteDanmakuConfig: [],
+    dlcAutomation: null,
+    duluncheWnd: null,
+    configValidators: [
+      () => Number(config.minCycleSec) < 1
+              && eventBus.emit("setConfig.minCycleSec", 1),
+      () => Number(config.minDanmakuLength) < 1
+              && eventBus.emit("setConfig.minDanmakuLength", 1),
+      () => Number(config.maxDanmakuLength) < config.minDanmakuLength
+              && eventBus.emit("setConfig.maxDanmakuLength", config.minDanmakuLength),
+    ],
+    danmakuGener: null,
+    configFieldContainer: null,
+    helpContent: null,
+    init: async () => {
+      try {
+        const chatFrameCtx = document.getElementById("chatframe").contentWindow;
+        refs.sendBtn = chatFrameCtx.document.querySelector(
+          "#send-button button",
+        ); // 发送按钮
+        refs.chatTxtInput = chatFrameCtx.document.querySelector(
+          "#input.yt-live-chat-text-input-field-renderer",
+        ); // 输入框
+        refs.offlineStateDiv = document.querySelector(
+          ".ytp-offline-slate-main-text",
+        ); // 直播状态
+        refs.autoPlayBtn = document.querySelector("paper-toggle-button");
+        if (!refs.sendBtn || !refs.chatTxtInput) return false;
+        return true;
+      } catch (_) {
+        return false;
+      }
+    },
+  };
+  const getProb = (length) => {
+    if (length <= 20) {
+      return 0.3;
+    } if (length <= 30) {
+      return 0.2;
+    } if (length <= 50) {
+      return 8.0 / length;
+    }
+    return 0.1;
+  };
+    // 全角转换为半角
+  const toCDB = (str) => {
+    str = str.replace(/’|‘/g, "'").replace(/“|”/g, "\"");
+    str = str.replace(/【/g, "[").replace(/】/g, "]").replace(/｛/g, "{").replace(/｝/g, "}");
+    str = str.replace(/，、/g, ",").replace(/：/g, ":");
+    str = str.replace(/。/g, ".").replace(/：/g, ":");
+    let tmp = "";
+    for (let i = 0; i < str.length; i++) {
+      if (str.codePointAt(i) === 12288) {
+        tmp += String.fromCharCode(str.codePointAt(i) - 12256);
+        continue;
+      }
+      if (str.codePointAt(i) > 65280 && str.codePointAt(i) < 65375) {
+        tmp += String.fromCharCode(str.codePointAt(i) - 65248);
+      } else {
+        tmp += String.fromCharCode(str.codePointAt(i));
+      }
+    }
+    return tmp;
+  };
+  // 弹药库云精制
+  const cloudRefine = (text) =>
+    /*
+    const { ammoRefineUrl } = config;
+    const json = { text, prob: getProb(text.length) };
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", ammoRefineUrl);
+    xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.send(json);
+    */
+    text;
+
+  // 本地弹药精制
+  const localRefine = (text) => {
+    const { ammoToLatin, ammoRefine_BanedWordMode } = config;
+    // 正则
+    for (let i = 0; i < refineJson.regexs.length; i++) {
+      const { expr } = refineJson.regexs[i];
+      const { replace } = refineJson.regexs[i];
+      text = text.replace(new RegExp(expr), replace);
+    }
+    // 分字
+    const charSplited = text.split(/(?=.)/us);
+    // 测试 用拉丁字符替换
+    if (ammoToLatin) {
+      for (let i = 0; i < charSplited.length; i++) {
+        charSplited[i] = toLatin(charSplited[i]);
+      }
+    }
+    text = charSplited.join("");
+    // 空格分词
+    let count = 0;
+    const splitedText = text.split(" ");
+    for (let i = 0; i < splitedText.length; i++) {
+      let word = splitedText[i].toLowerCase();
+      word = word.replace(/[[\]?.!-;,:',，。、“”[\]！？"]+/g, "").toLowerCase();
+      word = word.replace(/(^\s*)|(\s*$)/g, "");
+      // 如果是替换词则进行替换
+      if (refineJson.replace_words.hasOwnProperty(word)) {
+        splitedText[i] = refineJson.replace_words[word];
+        word = splitedText[i];
+      }
+
+      // 随机在屏蔽词中间插入一个英文字
+      /**
+      if (refine_json['block_words'].indexOf(word) > -1){
+          index = randomInt(0, word.length - 1);
+          rand_char = String.fromCharCode(Math.floor(Math.random() * 26) + "a".codePointAt(0));
+          splitedText[i] = word.substr(0, index) + rand_char + word.substr(index, word.length-1);
+      }
+      * */
+      // 移除屏蔽词
+      if (refineJson.block_words.indexOf(word) > -1) {
+        switch (+ammoRefine_BanedWordMode) {
+          case 0:
+            splitedText[i] = "";
+            break;
+          case 2:
+            if (refineJson.phantom_tank) {
+              if (count < 3 && word.length >= 2) {
+                // 最多添加3个字符，插入更多符号会使得被杀的几率大幅度提升
+                const index = randomInt(1, word.length - 2);
+                splitedText[i] = `${word.substr(0, index)}\u200b${word.substr(index)}`;
+                // console.log("Phantom tank: " + splitedText[i]);
+                count++;
+                break;
+              }
+            }
+            break;
+          case 1: {
+            const index = randomInt(0, word.length - 1);
+            let code = word.codePointAt(index);
+            if (code === 90) {
+              // "Z"
+              code = 65;
+            } else if (code === 122) {
+              // "z"
+              code = 97;
+            } else {
+              code += 1;
+            }
+            splitedText[i] = word.substr(0, index) + String.fromCodePoint(code) + word.substr(index + 1, word.length - 1);
+            // 如果运气不好，改动后还是屏蔽词则删除这个词
+            if (refineJson.block_words.indexOf(splitedText[i]) > -1) {
+              splitedText[i] = "";
+            }
+            break;
+          }
+          default:
+            console.log(`屏蔽词：${word} 模式: ${ammoRefine_BanedWordMode} 尚未编写`);
+        }
+      }
+    }
+    text = splitedText.join(" ");
+    return text;
+  };
+  const ammoDisterb = (text) => {
+    // 随机删除一个字符 避免弹药重复上不了tc
+    // 根据反馈，很多人会手动在屏蔽词中间加空格
+    // 现在不会删除空格了
+    const words = text.trim().split(/\s{1,}/);
+    if (words.length > 0) {
+      const wordIndex = randomInt(0, words.length - 1);
+      const charSplited = [...words[wordIndex]];
+      charSplited.splice(randomInt(0, charSplited.length - 1), 1);
+      words[wordIndex] = charSplited.join("");
+    }
+    text = words.join(" ");
+    return text;
+  };
+
+  const refine = (text) => {
+    const {
+      ammoRefine_Cloud, ammoRefine_Local, ammoRefine_Disturb, ammoRefine_ToLower,
+    } = config;
+    // 全角转为半角 (会被秒杀)
+    text = toCDB(text);
+    if (ammoRefine_ToLower) {
+      text = text.toLowerCase();
+      text = text.replace(/[[\]?.!-;,:',，。、“”！？"]+/g, " ");
+    }
+    if (ammoRefine_Local) {
+      text = localRefine(text);
+    }
+    if (ammoRefine_Cloud) {
+      text = cloudRefine(text);
+    }
+    if (ammoRefine_Disturb) {
+      text = ammoDisterb(text);
+    }
+    return text;
+  };
+  // 关闭自动播放
+  eventBus.on("dlc.ready", () => {
+    if (refs.autoPlayBtn.active) refs.autoPlayBtn.click();
+  });
+
+  eventBus.on(
+    "dlc.sendMsg",
+    ({ detail: text }) => {
+      refs.chatTxtInput.textContent = refine(text);
+      refs.chatTxtInput.dispatchEvent(new InputEvent("input"));
+      refs.sendBtn.click();
+    },
+    {},
+    "dlc.sendMsg.default",
+  );
+  eventBus.on("setRef.remoteDanmakuConfig", ({ detail }) => {
+    refs.remoteDanmakuConfig = detail;
+  });
+
+  try {
+    const savedCfg = JSON.parse(localStorage.getItem("duluncheCfg"));
+    Object.assign(config, savedCfg);
+  } catch (_) {
+    // noop
+  }
+  // 如果activate没定义就自动为true
+  config.modList.forEach((mod) => {
+    if (typeof mod.activate === "undefined") {
+      mod.activate = true;
+      localStorage.setItem("duluncheCfg", JSON.stringify(config));
+    }
+  });
+  let timer; // 定时器
+  let apiTimer;
+  // 直播间加载api
+  const loadLiveInfo = (url, target, ignoreError = false, started = false) => {
+    fetch(url)
+      .then((data) => data.json())
+      .then((data) => {
+        if (!data || !data.currentLives) {
+          target.checked = false;
+          Toast(
+            h("monitor", { style: { color: "red" } }, [
+              "data format error， please use correct api",
+            ]),
+          );
+          return;
+        }
+        if (started) {
+          if (!data.currentLives[0]) window.location = "https://www.youtube.com/";
+          return;
+        }
+        if (!data.currentLives[0]) {
+          Toast("Monitoring");
+          return;
+        }
+        const { link } = data.currentLives[0];
+        if (link === config.lastLiveUrl) {
+          Toast("Standby for API refresh.");
+          return;
+        }
+        setAndSave("lastLiveUrl", link);
+        window.location = link;
+      })
+      .catch((err) => {
+        console.error(err);
+        if (!ignoreError) {
+          target.checked = false;
+          setAndSave("fullAutomation", false);
+        }
+        Toast(
+          h("monitor", { style: { color: "red" } }, [`${"Load error"}${err}`]),
+        );
+      });
+  };
+
+  // 省流开关
+  const savingMode = (display = true) => {
+    document.querySelector(".ytp-play-button.ytp-button").click();
+    if (display) {
+      document.querySelector("#player.style-scope").style.display = "none";
+    } else {
+      document.querySelector("#player.style-scope").style.display = "block";
+    }
+  };
+  // 格式化时间
+  const formatTime = (time) => {
+    const hour = Math.floor(time / 3600);
+    const minute = Math.floor((time / 60) % 60);
+    const second = Math.floor(time % 60);
+    return `${hour}:${minute}:${second}`;
+  };
+
+  // 自动停止
+  const bindStop = (eve) => {
+    if (eve.target.data === "Bye bye!") {
+      eventBus.emit("dlc.stop");
+      eventBus.emit("live.stop");
+      window.location = "https://www.youtube.com";
+    }
+  };
+  // 检测直播间状态
+  const monitorLiveStatus = () => {
+    setTimeout(() => {
+      refs.offlineStateDiv = document.querySelector(
+        ".ytp-offline-slate-main-text",
+      );
+      if (!refs.offlineStateDiv.innerText) {
+        if (config.autoStop) {
+          refs.offlineStateDiv.addEventListener("DOMNodeInserted", bindStop);
+        }
+        eventBus.emit("live.start");
+        console.log("Live start");
+      } else {
+        // console.log("waiting for stream start...");
+        monitorLiveStatus();
+      }
+    }, 10000);
+  };
+
+  eventBus.on("dlc.ready", monitorLiveStatus);
+  // 添加/编辑mod
+  const addMod = (modName, mod, index = null) => {
+    const { modList } = config;
+    if (!mod) {
+      Toast("invalid mod");
+      return;
+    }
+    if (index === null) {
+      modList.push({
+        modName: modName || "unnamed MOD",
+        mod,
+        activate: true,
+      });
+    } else {
+      modList[index] = {
+        modName: modName || "unnamed MOD",
+        mod,
+        activate: true,
+      };
+    }
+    localStorage.setItem("duluncheCfg", JSON.stringify(config));
+    Toast("save MOD successful, please press F5 to refresh the website.");
+    modManager();
+  };
+
+  // mod编辑页面
+  const modEdit = (_mod = { modName: "", mod: "" }, index = 0) => {
+    const { modName, mod } = _mod;
+    const edit = Boolean(modName); // 编辑模式还是添加模式
+    return h(
+      "form",
+      {
+        style: { "max-width": "500px" },
+        id: "add-mod",
+        $submit: (ev) => {
+          ev.preventDefault();
+          if (edit) { addMod(ev.target.modName.value, ev.target.mod.value, index); } else {
+            addMod(ev.target.modName.value, ev.target.mod.value);
+          }
+        },
+      },
+      [
+        ["input", {
+          value: modName,
+          type: "text",
+          name: "modName",
+          placeholder: "MOD Name",
+        }],
+        ["button", { type: "submit", class: "dlc-btn" }, "Save"],
+        [
+          "textarea", {
+            value: mod,
+            name: "mod",
+            placeholder: "Extend script, code here will execute before eval.",
+            style: {
+              width: "100%",
+              height: "300px",
+              overflow: "scroll",
+              whiteSpace: "pre",
+            },
+            form: "add-mod",
+          }, mod,
+        ],
+      ],
+    );
+  };
+
+  // 单个mod管理
+  const modEditor = (mod, index) => {
+    const input = ["input", {
+      type: "checkbox",
+      $click: ({ target }) => {
+        config.modList[index].activate = target.checked;
+        localStorage.setItem("duluncheCfg", JSON.stringify(config));
+      },
+    }];
+    if (mod.activate) { input[1].checked = "checked"; }
+
+    return [
+      "div", {
+        style: {
+          display: "flex",
+          "justify-content": "flex-end",
+        },
+      }, [
+        ["span", { style: { "font-size": "15px", flex: 1 } }, mod.modName],
+        input,
+        ["button", {
+          $click: () => {
+            Toast(modEdit(mod, index));
+          },
+        }, "Edit"],
+        ["button", {
+          $click: () => {
+            if (index === 0) {
+              config.modList.shift();
+            } else {
+              config.modList.splice(index, index);
+            }
+            localStorage.setItem("duluncheCfg", JSON.stringify(config));
+            modManager();
+          },
+        }, "Delete"],
+
+      ],
+    ];
+  };
+    // mod 管理界面
+  const modManager = (singletonId = "singletonDom") => {
+    const { modList } = config;
+    if (modManager[singletonId]) modManager[singletonId].remove();
+    const dom = h(
+      "div",
+      {
+        class: "dlc-mod-mgr",
+      },
+      [
+        [
+          "button",
+          {
+            class: "dlc-btn",
+            $click: () => {
+              dom.remove();
+            },
+          },
+          "Shut down",
+        ],
+        ["button", {
+          class: "dlc-button",
+          $click: () => {
+            Toast(modEdit());
+          },
+        }, "Add mod"],
+        ...modList.map(modEditor),
+      ],
+    );
+    modManager[singletonId] = dom;
+    document.body.appendChild(dom);
+  };
+  if (config.extension) {
+    addMod("old version extend", config.extension);
+    config.extension = "";
+    localStorage.setItem("duluncheCfg", JSON.stringify(config));
+    Toast("old version extend scipt is moed to MOD management");
+  }
+  const ConfigField = (
+    {
+      label,
+      type,
+      name,
+      props = {},
+      children = [],
+      valueProp = "value",
+      helpDesc,
+    },
+    option,
+  ) => [
+    "div",
+    {},
+    [
+      helpDesc && [
+        "span",
+        {
+          class: "help-icon",
+          $click: (ev) => {
+            ev.stopPropagation();
+            Toast(helpDesc);
+          },
+        },
+      ],
+      [
+        "label",
+        {},
+        [
+          label,
+          [
+            type,
+            {
+              ...props,
+              $change: (ev) => {
+                eventBus.emit(`setConfig.${name}`, ev.target[valueProp]);
+                if (props.$change) props.$change(ev);
+              },
+            },
+            children,
+            (el) => {
+              el[valueProp] = config[name];
+              eventBus.on(
+                `setConfig.${name}`,
+                ({ detail }) => {
+                  config[name] = detail;
+                  el[valueProp] = detail;
+                },
+                {},
+                `dlc.setConfig.${name}.default`,
+              );
+            },
+          ],
+        ],
+      ],
+    ],
+    option,
+  ];
+
+  // 结束发射
+  eventBus.on(
+    "dlc.stop",
+    () => {
+      refs.runBtn.innerText = "Start";
+      refs.ambushBtn.innerText = "Standby mode";
+      clearTimeout(timer);
+      timer = null;
+    },
+    {},
+    "dlc.stop.default",
+  );
+
+  let lastMsgID = "";
+  // 开始伏击
+  eventBus.on(
+    "dlc.ambush",
+    () => {
+      pressDownVote();
+      Toast("Standby mode");
+      refs.ambushBtn.innerText = "Stop";
+      // Ignore previous messages
+      const messagesList = window.frames.chatframe.contentDocument.getElementsByTagName("yt-live-chat-text-message-renderer");
+      if (messagesList && messagesList.length > 0) {
+        lastMsgID = messagesList[messagesList.length - 1].id;
+      }
+      const nextTimer = () => {
+        timer = setTimeout(() => {
+          let attack = false;
+          const autoAttackTarget = "";
+          // const autoAttackTarget = "UltramanAce";
+          const messagesList = window.frames.chatframe.contentDocument.getElementsByTagName("yt-live-chat-text-message-renderer");
+          for (let i = messagesList.length - 1; i >= 0; i--) {
+            const message = messagesList[i];
+            if (message.id == lastMsgID) {
+              break;
+            }
+            const authorName = message.getElementsByTagName("yt-live-chat-author-chip")[0].children["author-name"].innerText;
+            console.log(`author: ${authorName}`);
+            console.log(`autoAttackTarget: ${autoAttackTarget}`);
+            if (false) {
+              if (refs.runBtn.innerText === "Start") {
+                const s = message.textContent || message.innerText;
+                Toast(`${String(new Date())}Find Target！${s}`);
+                attack = true;
+                refs.runBtn.click();
+              }
+            }
+          }
+          if (messagesList && messagesList.length > 0) {
+            lastMsgID = messagesList[messagesList.length - 1].id;
+          }
+          if (!attack) {
+            // console.log("目标还没出现...");
+            nextTimer();
+          }
+        }, 2000);
+      };
+      nextTimer();
+    },
+    {},
+    "dlc.ambush.default",
+  );
+  // 停止伏击
+  eventBus.on(
+    "dlc.retreat",
+    () => {
+      refs.ambushBtn.innerText = "伏击";
+      eventBus.emit("dlc.stop");
+    },
+    {},
+    "dlc.retreat.default",
+  );
+  const splitter = {
+    // 单句模式
+    0: (text) => [text.substr(0, config.maxDanmakuLength)],
+    // 多句转轮
+    2: (text) => text
+      .split("\n")
+      .map((it) => it.trim().substr(0, config.maxDanmakuLength))
+      .filter(Boolean),
+    // 说书模式
+    1: (text) => {
+      const { maxDanmakuLength, minDanmakuLength, splitChar } = config;
+      const list = [];
+      text
+        .trim()
+        .replace(/\s+/g, " ")
+        .split(new RegExp(`(?<=[${splitChar.replace(/(\\|])/g, "\\$1")}])`))
+        .reduce((buf, curr, currIndex, arr) => {
+          buf += curr;
+          while (buf.length > maxDanmakuLength) {
+            list.push(buf.substr(0, maxDanmakuLength));
+            buf = buf.substr(maxDanmakuLength);
+          }
+          if (currIndex === arr.length - 1) {
+            list.push(buf);
+            return "";
+          }
+          if (buf.length < minDanmakuLength) return buf;
+          list.push(buf);
+          return "";
+        }, "");
+      return list;
+    },
+  };
+
+  // 发射弹幕
+  eventBus.on(
+    "dlc.run",
+    () => {
+      const {
+        maxCycleSec,
+        minCycleSec,
+        text,
+        splitMode,
+        randomDanmaku,
+      } = config;
+      pressDownVote();
+
+      // 检查设置项
+      if (!config.noValidate) {
+        try {
+          refs.configValidators.forEach((vali) => vali());
+        } catch (err) {
+          Toast(err);
+        }
+      }
+
+      localStorage.setItem("duluncheCfg", JSON.stringify(config));
+
+      const localDanmakuList = splitter[splitMode](text);
+      const danmakuList = refs.remoteDanmakuConfig
+        .filter(Boolean)
+        .reduce((list, data) => list.concat(data.list), localDanmakuList);
+
+      if (!danmakuList.length) {
+        Toast("The current word list is empty！");
+        return;
+      }
+
+      refs.runBtn.innerText = "Stop";
+
+      const minCycleTime = parseInt(minCycleSec * 1000, 10);
+      const maxCycleTime = parseInt(maxCycleSec * 1000, 10);
+
+      refs.danmakuGener = (function* gen() {
+        if (+splitMode === 2 && randomDanmaku) {
+          while (true) yield danmakuList[randomInt(0, danmakuList.length - 1)];
+        } else {
+          while (true) yield* danmakuList;
+        }
+      }());
+
+      const nextTimer = () => {
+        timer = setTimeout(async () => {
+          eventBus.emit("dlc.sendMsg", (await refs.danmakuGener.next()).value);
+          if (timer) nextTimer();
+        }, randomInt(minCycleTime, maxCycleTime));
+      };
+      nextTimer();
+    },
+    {},
+    "dlc.run.default",
+  );
+
+  // 控制台
+  refs.duluncheWnd = h("div", { class: "dlc-cmd" }, [
+    [
+      "div",
+      {
+        class: "dlc-titlebar",
+        $mousedown(ev) {
+          if (ev.target !== this) return;
+          const mask = h("div", {
+            style: {
+              position: "fixed",
+              left: "0",
+              top: "0",
+              width: "100vw",
+              height: "100vh",
+            },
+          });
+          this.style.cursor = "all-scroll";
+          document.body.appendChild(mask);
+          const { layerX, layerY } = ev;
+          const move = (e) => {
+            refs.duluncheWnd.style.left = `${e.clientX - layerX}px`;
+            refs.duluncheWnd.style.top = `${e.clientY - layerY}px`;
+          };
+          document.addEventListener("mousemove", move);
+          document.addEventListener(
+            "mouseup",
+            () => {
+              document.removeEventListener("mousemove", move);
+              this.style.cursor = "";
+              mask.remove();
+            },
+            { once: true },
+          );
+        },
+      },
+      [
+        [
+          "button",
+          {
+            class: "dlc-btn",
+            $click: (ev) => {
+              ev.stopPropagation();
+              if (refs.runBtn.innerText === "Start") eventBus.emit("dlc.run");
+              else eventBus.emit("dlc.stop");
+            },
+          },
+          "Start",
+          (el) => {
+            refs.runBtn = el;
+          },
+        ],
+        [
+          "button",
+          {
+            class: "dlc-btn",
+            $click: (ev) => {
+              ev.stopPropagation();
+              if (refs.ambushBtn.innerText === "Standby mode") eventBus.emit("dlc.ambush");
+              else eventBus.emit("dlc.retreat");
+            },
+          },
+          "伏击",
+          (el) => {
+            refs.ambushBtn = el;
+          },
+        ],
+        version,
+        [
+          "span",
+          {
+            class: "help-icon",
+            $click: (ev) => {
+              ev.stopPropagation();
+              Toast(refs.helpContent);
+            },
+          },
+        ],
+        [
+          "div",
+          {
+            class: "dlc-close-btn",
+            $click: (ev) => {
+              ev.stopPropagation();
+              refs.duluncheWnd.style.setProperty("display", "none");
+            },
+          },
+          "X",
+        ],
+      ],
+    ],
+    [
+      "div",
+      { style: { margin: "0 auto" } },
+      [
+        ConfigField({
+          label: "",
+          name: "text",
+          type: "textarea",
+          props: {
+            placeholder: "Please enter the words you want to send.",
+            style: {
+              width: "265px",
+              height: "155px",
+              overflow: "scroll",
+              whiteSpace: "pre",
+            },
+          },
+        }),
+        ConfigField({
+          label: "Minimum waiting time(s):",
+          name: "minCycleSec",
+          type: "input",
+          props: {
+            type: "number",
+            min: 3,
+            placeholder: 3,
+            style: { width: "48px", margin: "1px" },
+          },
+        }),
+        ConfigField({
+          label: "Maximum waiting time(s):",
+          name: "maxCycleSec",
+          type: "input",
+          props: {
+            type: "number",
+            min: 3,
+            placeholder: 3,
+            style: { width: "48px", margin: "1px" },
+          },
+          helpDesc:
+                      "If the setting is less than the minimum waiting time, it is equivalent to not waiting randomly, and sending the Sentence with the minimum waiting time",
+        }),
+        ConfigField(
+          {
+            label: "Sentence disturbance",
+            name: "ammoRefine_Disturb",
+            type: "input",
+            props: { type: "checkbox" },
+            valueProp: "checked",
+            helpDesc: "Randomly remove a character in the word to avoid sending the same word repeatedly, which makes it difficult to get on top chat",
+          },
+        ),
+        ConfigField(
+          {
+            label: "Sentence removes capital letter punctuation",
+            name: "ammoRefine_ToLower",
+            type: "input",
+            props: { type: "checkbox" },
+            valueProp: "checked",
+            helpDesc: "Convert all uppercase letters to lowercase, remove all punctuation to anti the Nightbot",
+          },
+        ),
+        ConfigField(
+          {
+            label: "Word refined (Local)",
+            name: "ammoRefine_Local",
+            type: "input",
+            props: { type: "checkbox" },
+            valueProp: "checked",
+            helpDesc: "Wrof refined（Such as removing blocked words, changing Chinese punctuation, and replacing them regularly to increase the probability of word passing Nightbot",
+          },
+        ),
+        /*
+        ConfigField(
+          {
+            label: "弹药精制 (云) 尚未实装",
+            name: "ammoRefine_Cloud",
+            type: "input",
+            props: { type: "checkbox" },
+            valueProp: "checked",
+            helpDesc: "尚未实装 - 在服务器上进行弹药精制，避免规则被4v告密",
+          },
+        ),
+        */
+        // 不要用！！！会被判断成符号秒杀
+        /*
+                  ConfigField(
+                      {
+                          label: "字母转换为拉丁文",
+                          name: "ammoToLatin",
+                          type: "input",
+                          props: { type: "checkbox" },
+                          valueProp: "checked",
+                          helpDesc: "用拉丁字符替换英文字母 会触发符号判定，被night bot秒杀",
+                      },
+                  ),
+                  */
+        ConfigField({
+          label: "Word refined strategy:",
+          name: "ammoRefineStategy",
+          type: "input",
+          props: {
+            type: "text",
+            style: { width: "150px", margin: "1px" },
+          },
+        }, () => {
+          const { ammoRefineStategy } = config;
+          console.log(`ammoRefineStategy: ${ammoRefineStategy}`);
+        }),
+        // ConfigField({
+        //   label: "云精制网址:",
+        //   name: "ammoRefineUrl",
+        //   type: "input",
+        //   props: {
+        //     type: "text",
+        //     style: { width: "150px", margin: "1px" },
+        //   },
+        // }),
+        // ConfigField({
+        //   label: "弹幕长度上限:",
+        //   name: "maxDanmakuLength",
+        //   type: "input",
+        //   props: {
+        //     type: "number",
+        //     min: 1,
+        //     style: { width: "48px", margin: "1px" },
+        //   },
+        // }),
+        ConfigField({
+          label: "Block word processing:",
+          name: "ammoRefine_BanedWordMode",
+          type: "select",
+          children: [
+            { value: "0", text: "delete block word" },
+            { value: "1", text: "Disturbance block word" },
+            { value: "2", text: "Disguise blocking words (test)" },
+          ].map(({ text, value }) => ["option", { value }, text]),
+          helpDesc:
+                      "Delete block word: directly delete the block word; disturb block word: randomly change a letter in the block word; disguise block word: activate the block word disguise",
+        },
+        (el) => {
+          if (config.ammoRefine_Local !== true) el.classList.add("hide");
+          eventBus.on(
+            "setConfig.ammoRefine_Local",
+            ({ detail: value }) => {
+              if (value !== true) el.classList.add("hide");
+              else el.classList.remove("hide");
+            },
+            {},
+            "dlc.setConfig.ammoRefine_Local.banedWordField",
+          );
+        }),
+        ConfigField({
+          label: "Sentence segmentation:",
+          name: "splitMode",
+          type: "select",
+          children: [
+            { value: "2", text: "rotate pattern" },
+            { value: "0", text: "Single pattern" },
+            { value: "1", text: "Storytelling pattern" },
+          ].map(({ text, value }) => ["option", { value }, text]),
+          helpDesc:
+                      "sentences Rotate:one row for one sentence；Single sentence pattern:Keep going；Story telling pattern: normal 200 charaters for a roll",
+        }),
+        ConfigField(
+          {
+            label: "Random mode:",
+            name: "randomDanmaku",
+            type: "input",
+            props: { type: "checkbox" },
+            valueProp: "checked",
+            helpDesc:
+                          "Random mode: Whether to randomly select word from word list to send，only use in rotate pattern.Story telling pattern makes confusion.",
+          },
+          (el) => {
+            if (+config.splitMode !== 2) el.classList.add("hide");
+            eventBus.on(
+              "setConfig.splitMode",
+              ({ detail: value }) => {
+                if (value !== "2") el.classList.add("hide");
+                else el.classList.remove("hide");
+              },
+              {},
+              "dlc.setConfig.splitMode.randomDanmakuField",
+            );
+          },
+        ),
+        ConfigField({
+          label: "No Validate:",
+          name: "noValidate",
+          type: "input",
+          props: { type: "checkbox" },
+          valueProp: "checked",
+          helpDesc:
+                      "No Validate: Means you can set minimum time to zero but it may crush",
+        }),
+        ConfigField(
+          {
+            label: "Story telling limit:",
+            name: "minDanmakuLength",
+            type: "input",
+            props: {
+              type: "number",
+              min: 1,
+              style: { width: "48px", margin: "1px" },
+            },
+            helpDesc:
+                          "Story telling limit: for story telling pattern. When segmenting sentences, try to control the length above this.",
+          },
+          (el) => {
+            if (+config.splitMode !== 1) el.classList.add("hide");
+            eventBus.on(
+              "setConfig.splitMode",
+              ({ detail: value }) => {
+                if (value !== "1") el.classList.add("hide");
+                else el.classList.remove("hide");
+              },
+              {},
+              "dlc.setConfig.splitMode.minDanmakuLengthField",
+            );
+          },
+        ),
+        ConfigField(
+          {
+            label: "Storytelling segment symbol:",
+            name: "splitChar",
+            type: "input",
+            props: {
+              type: "text",
+              min: 1,
+              style: { width: "48px", margin: "1px" },
+            },
+            helpDesc:
+                          "Storytelling segment symbol:When it is empty, the sentence will be segmented according to the Story telling limit",
+          },
+          (el) => {
+            if (+config.splitMode !== 1) el.classList.add("hide");
+            eventBus.on(
+              "setConfig.splitMode",
+              ({ detail: value }) => {
+                if (value !== "1") el.classList.add("hide");
+                else el.classList.remove("hide");
+              },
+              {},
+              "dlc.setConfig.splitMode.splitCharField",
+            );
+          },
+        ),
+        ConfigField(
+          {
+            label: "Internet-saving mode",
+            name: "lowConsume",
+            type: "input",
+            props: { type: "checkbox" },
+            valueProp: "checked",
+            helpDesc: "delete the video to save the network traffic",
+          },
+          () => {
+            const { lowConsume } = config;
+            if (lowConsume) {
+              eventBus.on("dlc.ready", savingMode);
+            }
+            eventBus.on("setConfig.lowConsume", ({ detail: value }) => {
+              savingMode(value);
+            });
+          },
+        ),
+        ConfigField(
+          {
+            label: "Auto stop",
+            name: "autoStop",
+            type: "input",
+            props: { type: "checkbox" },
+            valueProp: "checked",
+            helpDesc: "Auto stop",
+          },
+          () => {
+            // const { autoStop } = config;
+            eventBus.on("setConfig.autoStop", ({ detail: value }) => {
+              if (value) {
+                refs.offlineStateDiv.addEventListener(
+                  "DOMNodeInserted",
+                  bindStop,
+                );
+              } else {
+                try {
+                  refs.offlineStateDiv.removeEventListener(
+                    "DOMNodeInserted",
+                    bindStop,
+                  );
+                } catch (c) {
+                  // noop
+                }
+              }
+            });
+          },
+        ),
+        ConfigField(
+          {
+            label: h([
+              "Auto Start mode:",
+
+              [
+                "input",
+                {
+                  type: "checkbox",
+                  $click: ({ target }) => {
+                    const { infoUrl } = config;
+                    if (!target.checked) {
+                      clearInterval(apiTimer);
+                      setAndSave("fullAutomation", false);
+                      return;
+                    }
+                    setAndSave("fullAutomation", true);
+
+                    if (window.location.href !== "https://www.youtube.com/") {
+                      Toast("You can only turn on monitoring on the Youtube homepage. Just go back to the homepage and refresh");
+                      return;
+                    }
+                    Toast("Monitoring...");
+                    loadLiveInfo(infoUrl, target);
+                    apiTimer = setInterval(
+                      () => loadLiveInfo(infoUrl, target, true),
+                      60000,
+                    );
+                  },
+                },
+              ],
+            ]),
+            name: "infoUrl",
+            type: "textarea",
+            props: {
+              placeholder: "Broadcast monitoring address",
+              style: {
+                width: "265px",
+                height: "40px",
+                overflow: "scroll",
+                whiteSpace: "pre",
+              },
+            },
+            helpDesc: "put broadcast address api here",
+          },
+          (el) => {
+            const { fullAutomation, infoUrl, lastLiveUrl } = config;
+            const target = el.querySelector("input");
+            if (window.location.href === lastLiveUrl) {
+              setInterval(
+                () => loadLiveInfo(
+                  infoUrl,
+                  target,
+                  true,
+                  true,
+                ),
+                60000,
+              );
+            }
+
+            if (fullAutomation) {
+              target.checked = true;
+            }
+            if (
+              fullAutomation
+                && infoUrl !== ""
+                && window.location.href === "https://www.youtube.com/"
+            ) {
+              target.checked = true;
+              Toast("Monitoring...");
+              loadLiveInfo(infoUrl, target);
+              apiTimer = setInterval(
+                () => loadLiveInfo(infoUrl, target, true),
+                60000,
+              );
+            }
+          },
+        ),
+        ConfigField(
+          {
+            label: "Broadcast Waiting Time(s)",
+            name: "startWaitingTime",
+            type: "input",
+            props: {
+              type: "number",
+              min: 5,
+              placeholder: config.startWaitingTime,
+              style: { width: "48px", margin: "1px" },
+            },
+          },
+          () => {
+            const { fullAutomation } = config;
+            const waitingForRun = () => {
+              const { startWaitingTime } = config;
+              Toast(
+                `Auto Youtube Chat Sender will start after ${startWaitingTime}s`,
+                "dlc-alert",
+              );
+              setTimeout(() => {
+                eventBus.emit("dlc.run");
+              }, startWaitingTime * 1000);
+            };
+
+            if (fullAutomation) {
+              eventBus.on("live.start", waitingForRun);
+            }
+          },
+        ),
+
+        ConfigField({
+          label: h([
+            [
+              "button",
+              {
+                class: "dlc-btn",
+                $click: ({ target }) => {
+                  if (target.innerText !== "Timing start") return;
+                  const { startTime } = config;
+                  const timeStamp = Date.parse(new Date(startTime));
+                  let timeRemain = timeStamp - new Date().getTime();
+                  target.innerText = formatTime(parseInt(timeRemain / 1000));
+                  const startTimer = () => {
+                    setTimeout(() => {
+                      if (timeRemain > 0) {
+                        timeRemain = timeStamp - new Date().getTime();
+                        target.innerText = formatTime(
+                          parseInt(timeRemain / 1000),
+                        );
+                        startTimer();
+                      } else {
+                        eventBus.emit("dlc.run");
+                        target.innerText = "Timing start";
+                      }
+                    }, 1000);
+                  };
+                  startTimer();
+                },
+              },
+              "Timing start",
+            ],
+          ]),
+          name: "startTime",
+          type: "input",
+          props: {
+            type: "text",
+            min: 1,
+            style: { width: "150px", margin: "1px" },
+          },
+           // Toast("The current word list is empty！");
+          // helpDesc: '输入时间定时启动，格式举例：2020-10-21 17:31:00',
+        }),
+        ConfigField({
+          label: h([
+            [
+              "button",
+              {
+                class: "dlc-btn",
+                $click: ({ target }) => {
+                  if (target.innerText !== "定时结束") return;
+                  const { stopTime } = config;
+                  const timeStamp = Date.parse(new Date(stopTime));
+                  let timeRemain = timeStamp - new Date().getTime();
+                  target.innerText = formatTime(parseInt(timeRemain / 1000));
+                  const stopTimer = () => {
+                    setTimeout(() => {
+                      if (timeRemain > 0) {
+                        timeRemain = timeStamp - new Date().getTime();
+                        target.innerText = formatTime(
+                          parseInt(timeRemain / 1000),
+                        );
+                        stopTimer();
+                      } else {
+                        eventBus.emit("dlc.stop");
+                        target.innerText = "Timing end";
+                      }
+                    }, 1000);
+                  };
+                  stopTimer();
+                },
+              },
+              "Timing end",
+            ],
+          ]),
+          name: "stopTime",
+          type: "input",
+          props: {
+            type: "text",
+            min: 1,
+            style: { width: "150px", margin: "1px" },
+          },
+          // helpDesc: '输入时间定时结束，格式举例：2020-10-21 17:31:00',
+        }),
+        h([
+          [
+            "button",
+            {
+              class: "dlc-btn",
+              $click: () => {
+                localStorage.setItem("duluncheCfg", JSON.stringify(config));
+                Toast("Save successful");
+              },
+            },
+            "Save the set up",
+          ],
+        ]),
+        h([
+          [
+            "button",
+            {
+              class: "dlc-btn",
+              $click: () => {
+                modManager();
+              },
+            },
+            "MOD management",
+          ],
+        ]),
+        ConfigField({
+          label: h([
+            "load wating words:",
+            [
+              "button",
+              {
+                class: "dlc-btn",
+                $click: ({ target }) => {
+                  if (target.innerText !== "Update") return;
+                  target.innerText = "Updating...";
+                  const { remoteDanmakuBase } = config;
+                  const urlList = remoteDanmakuBase
+                    .split("\n")
+                    .map((it) => it.trim())
+                    .filter(Boolean);
+                  const queued = new Set();
+                  const allRemoteUrl = new Set();
+                  const loaded = [];
+                  const loadFinish = () => {
+                    eventBus.emit("setRef.remoteDanmakuConfig", loaded);
+                    target.innerText = "Update";
+                    Toast(
+                      h(
+                        "pre",
+                        { style: { color: "blue" } },
+                        refs.remoteDanmakuConfig
+                          .map((data) => data.error || `${data.name || "匿名弹幕库"}: ${data.list.length}条`)
+                          .join("\n"),
+                      ),
+                    );
+                  };
+                  const loadRemoteDanmaku = (url) => {
+                    if (allRemoteUrl.has(url)) return;
+                    queued.add(url);
+                    allRemoteUrl.add(url);
+                    fetch(url)
+                      .then((data) => data.json())
+                      .then((data) => {
+                        if (!data) {
+                          loaded.push({ error: `[Update fail]${url}` });
+                          return;
+                        }
+                        if (Array.isArray(data.extends)) {
+                          data.extends.forEach((extUrl) => loadRemoteDanmaku(extUrl));
+                        }
+                        if (Array.isArray(data.list)) loaded.push(data);
+                      })
+                      .catch((err) => {
+                        console.error(err);
+                        loaded.push({ error: `[Update fail]${url}` });
+                      })
+                      .finally(() => {
+                        queued.delete(url);
+                        if (queued.size === 0) loadFinish();
+                      });
+                  };
+                  urlList.forEach((url) => loadRemoteDanmaku(url));
+                },
+              },
+              "Update",
+            ],
+            [
+              "span",
+              {},
+              "(unload)",
+              (el) => {
+                eventBus.on("setRef.remoteDanmakuConfig", ({ detail }) => {
+                  const totalLength = detail.reduce(
+                    (total, data) => total + ((data && data.list.length) || 0),
+                    0,
+                  );
+                  el.innerText = `(load${totalLength}条)`;
+                });
+              },
+            ],
+          ]),
+          name: "remoteDanmakuBase",
+          type: "textarea",
+          props: {
+            placeholder: "Support multiple URLs, each line",
+            style: {
+              width: "265px",
+              height: "70px",
+              overflow: "scroll",
+              whiteSpace: "pre",
+            },
+          },
+          helpDesc: "Load the word list from the specified address, support adding multiple addresses, each line; the waiting word list will be added to the local word list; the updated word will take effect the next time it is dispatched",
+        }),
+      ],
+      (el) => {
+        refs.configFieldContainer = el;
+      },
+    ],
+  ]);
+
+  // 默认悬浮窗
+  let tip = false;
+  const suspension = h(
+    "div",
+    {
+      class: "dlc-suspension",
+
+      $click: () => {
+        refs.duluncheWnd.style.setProperty("display", "block");
+        if (!tip) {
+          tip = true;
+          refineJson = getJSON();
+          Toast(`Please separate each sentence of the rotate pattern with a carriage return. For your own account, it is recommended to adjust the speaking interval to more than 8000;${refineJson.announcement}`);
+        }
+      },
+    },
+    "Initialing...",
+    (el) => {
+      eventBus.on(
+        "dlc.ready",
+        () => {
+          el.textContent = "Console";
+        },
+        { once: true },
+        "dlc.ready.default",
+      );
+    },
+  );
+
+  window.dulunche = {
+    version,
+    config: new Proxy(config, {
+      set(_, p, value) {
+        eventBus.emit(`setConfig.${p}`, value);
+      },
+    }),
+    eventBus,
+    refs,
+    components: {
+      Toast,
+      ConfigField,
+      h,
+    },
+  };
+
+  if (config.modList) {
+    try {
+      config.modList.forEach((_mod) => {
+        if (_mod.activate) {
+          eval(_mod.mod);
+        }
+      });
+    } catch (e) {
+      console.error(e);
+      Toast("The extended script failed to run, and the error message has been output to the console");
+    }
+  }
+
+  const init = async () => {
+    let result;
+    try {
+      result = await refs.init();
+    } catch (_) {
+      // noop
+    }
+    if (result !== true) {
+      setTimeout(() => init(), 1000);
+    } else {
+      eventBus.emit("dlc.ready");
+    }
+  };
+  init();
+  // 窗口宽度变化会导致聊天栏重新加载
+  setInterval(() => {
+    try {
+      const chatFrameCtx = document.getElementById("chatframe").contentWindow;
+      const sendBtn = chatFrameCtx.document.querySelector(
+        "#send-button button",
+      ); // 发送按钮
+      const chatTxtInput = chatFrameCtx.document.querySelector(
+        "#input.yt-live-chat-text-input-field-renderer",
+      ); // 输入框
+      if (sendBtn) refs.sendBtn = sendBtn;
+      if (chatTxtInput) refs.chatTxtInput = chatTxtInput;
+    } catch (_) {
+      // noop
+    }
+  }, 60000);
+
+  document.body.appendChild(suspension);
+  document.body.appendChild(refs.duluncheWnd);
+
+  document.body.appendChild(
+    h(
+      "style",
+      {},
+      `
+    .dlc-cmd {
+    background: #FFFFFF;
+    overflow-y: auto;
+    overflow-x: hidden;
+    z-index: 998;
+    position: fixed;
+    padding:5px;
+    width: 290px;
+    height: 510px;
+    box-sizing: content-box;
+    border: 1px solid #ff921a;
+    border-radius: 5px;
+    right: 10px;
+    top: 30%;
+    display: none;
+    }
+
+    .dlc-titlebar {
+    user-select: none;
+    background-color: #fb5;
+    }
+
+    .dlc-close-btn {
+    display: inline-block;
+    margin-top: 3px;
+    position: relative;
+    text-align: center;
+    width: 19px;
+    height: 19px;
+    color: white;
+    cursor: pointer;
+    float: right;
+    margin-right: 5px;
+    background-color: black;
+    border: gray 1px solid;
+    line-height: 21px;
+    }
+    .dlc-btn {
+    display: inline-block;
+    background: #f70;
+    color: #FFFFFF;
+    min-width: 70px;
+    height: 24px;
+    margin: 2px;
+    }
+
+    .dlc-suspension {
+    background: #1A59B7;
+    color:#ffffff;
+    overflow: hidden;
+    z-index: 997;
+    position: fixed;
+    padding:5px;
+    text-align:center;
+    width: 85px;
+    height: 22px;
+    border-radius: 5px;
+    right: 10px;
+    top: 30%;
+    }
+
+    .dlc-toast {
+    top: 10px;
+    left: 10px;
+    max-height: 90vh;
+    max-width: 60vw;
+    overflow: auto;
+    position: fixed;
+    background: lightgrey;
+    padding: 16px;
+    border: gray 1px solid;
+    }
+
+    .dlc-alert {
+    max-height: 90vh;
+    max-width: 60vw;
+    overflow: auto;
+    background: lightgrey;
+    padding: 16px;
+    border: gray 1px solid;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%,-50%);
+    }
+    .dlc-mod-mgr {
+      max-height: 140vh;
+      max-width: 150vw;
+      overflow: auto;
+      background: lightgrey;
+      padding: 16px;
+      border: gray 1px solid;
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%,-50%);
+    }
+    .help-icon::after {
+    content: '?';
+    margin-right: 4px;
+    display: inline-block;
+    background-color: #ddd;
+    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    line-height: 16px;
+    text-align: center;
+    border: #999 1px solid;
+    font-size: 12px;
+    }
+
+    .hide {
+    display: none;
+    }
+    `,
+    ),
+  );
+
+  refs.helpContent = [
+    [
+      "button",
+      {
+        class: "dlc-btn",
+        $click: () => {
+          Toast("Old version");
+        },
+      },
+      "Edit extended script",
+    ],
+    [
+      "pre",
+      {},
+      `
+    API开发指南，在window.dulunche获取引用，TS定义如下
+    /**
+    * 独轮车配置，这是一个Proxy对象，你可以直接获取和设置配置，通过这个对象设置配置项时，也会向eventBus提交一个emit(\`setConfig.\${配置项名称}\`, value)事件
+    * config对象在每次启动时会保存到localStorage的duluncheCfg中
+    */
+    interface ConfigType {
+    /** 断句方式0: 单句模式 1: 说书模式 2: 多句转轮 */
+    splitMode: number;
+    /** 最小发送间隔（秒） */
+    minCycleSec: number;
+    /** 最大发送间隔（秒） */
+    maxCycleSec: number;
+    /** 是否随机发送 */
+    randomDanmaku: boolean;
+    /** 发送消息列表 */
+    text: string;
+    /** 最大弹幕字数限制 */
+    maxDanmakuLength: number;
+    /** 最小弹幕长度 */
+    minDanmakuLength: number;
+    /** 断句符 */
+    splitChar: string;
+    /** 远程弹幕库 */
+    remoteDanmakuBase: string;
+    /** 不校验配置，即不运行configValidators, 设为true是，所有配置项都不会限制输入范围 */
+    noValidate: boolean;
+    /** 扩展脚本，独轮车初始化前会eval执行这个脚本 */
+    extension: string;
+
+    [key: string]: any;
+    }
+
+    /**
+    * 独轮车事件总线，可以在这里监听和触发各种事件
+    */
+    interface DuluncheEventBus {
+    /** 用来绑定事件的EventTarget对象，通常不需要直接操作这个对象 */
+    ee: EventTarget;
+    /** 监听事件，addEventListener, 会返回一个key用于从fnMap获取监听器引用，这个key可以手动指定，默认是一个Symbol */
+    on<T = any>(
+    type: string,
+    fn: (detail: CustomEvent<T>) => void,
+    opt?: boolean | AddEventListenerOptions, fnKey?: string | Symbol
+    ): string | Symbol;
+    /** 取消监听事件，removeEventListener */
+    off<T = any>(type: string, fn: (detail: CustomEvent<T>) => void, opt?: boolean | AddEventListenerOptions): any;
+    /** 触发事件，dispatchEvent */
+    emit<T = any>(type: string, detail: T): void;
+    /** 已经注册的事件监听器map，可以通过key拿到事件监听器的引用 */
+    fnMap: Map<string | Symbol, (detail: CustomEvent) => void>;
+    }
+
+    /** 独轮车内部一些引用，修改它们可以改变独轮车原本的一些行为 */
+    interface DuluncheRefs {
+    /** 配置项校验器，独轮车会在dlc.run开始时依次执行数组中的每个函数 */
+    configValidators: Array<() => void>
+    /** 独轮车控制台窗口dom引用 */
+    duluncheWnd: HTMLDivElement;
+    /** 独轮车配置列表dom引用 */
+    configFieldContainer: HTMLDivElement;
+    /** 弹幕生成器，独轮车通过调用danmakuGener.next().value来获取下一条要发送的弹幕，弹幕生成器只能在独轮车启动状态下被替换，最早是dlc.run的下一次事件循环 */
+    danmakuGener: GeneratorFunction;
+    /** 独轮车帮助信息内容 */
+    helpContent: any;
+    /** 初始化函数，若没有返回true则会等待1秒后重新执行，初始化成功会触发dlc.ready事件，默认行为是获取油管直播页聊天输入框和发送按钮引用，可以是异步函数 */
+    init: () => boolean | Promise<boolean>;
+
+    [key: string]: any;
+    }
+
+    interface Window {
+    dulunche: {
+    config: ConfigType;
+    eventBus: DuluncheEventBus,
+    refs: DuluncheRefs,
+
+    /** 组件和渲染器，建议看过源码后使用 */
+    components: {
+    Toast: (children: string | Node, singletonId?: string) => void;
+    ConfigField: (...args: any) => HTMLDivElement;
+    h: (...args: any) => Node;
+    }
+    };
+    }
+
+    /**
+    eventBus 默认的事件列表, 你可以通过emit主动触发事件，或通过on监听事件
+    事件名 | 事件 | detail参数类型 | detail参数说明
+    dlc.run | 启动独轮车 | void | -
+    dlc.stop | 停止独轮车 | void | -
+    dlc.sendMsg | 发送消息 | string | 发送的内容
+    dlc.ready | 初始化成功 | void | -
+    setConfig.\${configKey} | 修改配置 | any | 修改的配置值
+    live.start| 监控到直播已经开始 | void
+    live.stop | 监控到直播已经结束 | void
+    */
+    `,
+    ],
+  ];
+}
