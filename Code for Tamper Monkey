@@ -1053,7 +1053,7 @@
             type: "input",
             props: { type: "checkbox" },
             valueProp: "checked",
-            helpDesc: "Wrof refined（Such as removing blocked words, changing Chinese punctuation, and replacing them regularly to increase the probability of word passing Nightbot",
+            helpDesc: "Wrod refined（Such as removing blocked words, changing Chinese punctuation, and replacing them regularly to increase the probability of word passing Nightbot",
           },
         ),
         /*
