@@ -1,17 +1,17 @@
 // ==UserScript==
 // @icon          https://www.youtube.com/favicon.ico
-// @name        Auto Youtube Chat Sender
-// @author
-// @description   youtube
+// @name          Auto Youtube Chat Sender0.2
+// @author        necros & dislido
+// @description   youtube  Chat Sender
 // @match         *://www.youtube.com/*
-// @version
+// @version      0.2
 // @grant         none
 // @namespace
 // ==/UserScript==
 
 {
   if (window.top !== window.self) throw new Error("非顶层框架");
-  const version = "0.1";
+  const version = "0.2";
   const randomInt = (min, max) => {
     if (max < min) return min;
     return Math.floor(Math.random() * (max - min + 1) + min);
@@ -79,7 +79,7 @@
               Toast[singletonId] = null;
             },
           },
-          "Shut down",
+          "X",
         ],
         ["div", {}, msg],
       ],
@@ -143,22 +143,7 @@
     config[prop] = target;
     localStorage.setItem("duluncheCfg", JSON.stringify(config));
   };
-  const pressButton = (button) => {
-    if (button.getElementsByTagName("button")[0].getAttribute("aria-pressed") === "false") {
-      // Not pressed
-      console.log("Not pressed");
-      button.click();
-    }
-  };
-  const pressUpVote = () => {
-    pressButton(document.getElementById("top-level-buttons").children[0]);
-  };
-  const pressDownVote = () => {
-    const channelName = document.getElementById("channel-name").getElementsByClassName("yt-simple-endpoint style-scope yt-formatted-string")[0].text;
-   // if (false) {
-   //   pressButton(document.getElementById("top-level-buttons").children[1]);
-  //  }
-  };
+
   const getJSON = () => {
     const { ammoRefineStategy } = config;
     // console.log(ammoRefineStategy);
@@ -169,13 +154,13 @@
       return JSON.parse(http.responseText);
     } catch (e) {
       return {
-        version: "0.1",
-        logs: "0.1 Logs: Try to tranfer to English.",
-        announcement: "unload online annoucement",
+        version: "3.4.6",
+        logs: "Try to translate to English.",
+        announcement: "未加载云公告",
         // "regexs": [{"expr": "\\.", "replace": "_"}, {"expr": "\\,", "replace": "!"}],
         regexs: [],
-        block_words: ["coco", "politics"],
-        replace_words: { re: "are", ay: "any" },
+        block_words: [],
+        replace_words: { are: "are" },
         phantom_tank: false,
       };
     }
@@ -197,7 +182,7 @@
 
   // 版本更新检测
   if (versionToNumber(version) < versionToNumber(refineJson.version)) {
-    Toast(`Your version is: ${version}, The latest version is: ${refineJson.version}, It is recommended to update the latest version in  Tamper Monkey。\nUpdate log: \n    ${refineJson.logs}`);
+    Toast(`Your version is ${0.2}, The new version is: ${refineJson.version}, You can try to update in Tamper Monkey.\nUpdate note: \n    ${refineJson.logs}`);
   }
 
   const refs = {
@@ -402,7 +387,7 @@
     }
     return text;
   };
-  // 关闭自动播放
+  // X自动播放
   eventBus.on("dlc.ready", () => {
     if (refs.autoPlayBtn.active) refs.autoPlayBtn.click();
   });
@@ -445,7 +430,7 @@
           target.checked = false;
           Toast(
             h("monitor", { style: { color: "red" } }, [
-              "data format error， please use correct api",
+              "数据格式有误， 请使用正确的api",
             ]),
           );
           return;
@@ -455,12 +440,12 @@
           return;
         }
         if (!data.currentLives[0]) {
-          Toast("Monitoring");
+          Toast("监控中");
           return;
         }
         const { link } = data.currentLives[0];
         if (link === config.lastLiveUrl) {
-          Toast("Standby for API refresh.");
+          Toast("刚冲过了, 休息中, 等待监控API刷新");
           return;
         }
         setAndSave("lastLiveUrl", link);
@@ -473,7 +458,7 @@
           setAndSave("fullAutomation", false);
         }
         Toast(
-          h("monitor", { style: { color: "red" } }, [`${"Load error"}${err}`]),
+          h("monitor", { style: { color: "red" } }, [`${"加载错误 "}${err}`]),
         );
       });
   };
@@ -497,7 +482,7 @@
 
   // 自动停止
   const bindStop = (eve) => {
-    if (eve.target.data === "Bye bye!") {
+    if (eve.target.data === "Goodbye! Have a nice day.") {
       eventBus.emit("dlc.stop");
       eventBus.emit("live.stop");
       window.location = "https://www.youtube.com";
@@ -527,24 +512,24 @@
   const addMod = (modName, mod, index = null) => {
     const { modList } = config;
     if (!mod) {
-      Toast("invalid mod");
+      Toast("mod error!");
       return;
     }
     if (index === null) {
       modList.push({
-        modName: modName || "unnamed MOD",
+        modName: modName || "未命名MOD",
         mod,
         activate: true,
       });
     } else {
       modList[index] = {
-        modName: modName || "unnamed MOD",
+        modName: modName || "未命名MOD",
         mod,
         activate: true,
       };
     }
     localStorage.setItem("duluncheCfg", JSON.stringify(config));
-    Toast("save MOD successful, please press F5 to refresh the website.");
+    Toast("MOD save successful, please press F5 to refresh");
     modManager();
   };
 
@@ -569,14 +554,14 @@
           value: modName,
           type: "text",
           name: "modName",
-          placeholder: "MOD Name",
+          placeholder: "MODname",
         }],
-        ["button", { type: "submit", class: "dlc-btn" }, "Save"],
+        ["button", { type: "submit", class: "dlc-btn" }, "save"],
         [
           "textarea", {
             value: mod,
             name: "mod",
-            placeholder: "Extend script, code here will execute before eval.",
+            placeholder: "extend script.The code here will execute eval before initialization",
             style: {
               width: "100%",
               height: "300px",
@@ -614,7 +599,7 @@
           $click: () => {
             Toast(modEdit(mod, index));
           },
-        }, "Edit"],
+        }, "edit"],
         ["button", {
           $click: () => {
             if (index === 0) {
@@ -625,7 +610,7 @@
             localStorage.setItem("duluncheCfg", JSON.stringify(config));
             modManager();
           },
-        }, "Delete"],
+        }, "delete"],
 
       ],
     ];
@@ -648,14 +633,14 @@
               dom.remove();
             },
           },
-          "Shut down",
+          "X",
         ],
         ["button", {
           class: "dlc-button",
           $click: () => {
             Toast(modEdit());
           },
-        }, "Add mod"],
+        }, "get mod"],
         ...modList.map(modEditor),
       ],
     );
@@ -663,10 +648,10 @@
     document.body.appendChild(dom);
   };
   if (config.extension) {
-    addMod("old version extend", config.extension);
+    addMod("old version extention", config.extension);
     config.extension = "";
     localStorage.setItem("duluncheCfg", JSON.stringify(config));
-    Toast("old version extend scipt is moed to MOD management");
+    Toast("old version extention is change into MOD management.");
   }
   const ConfigField = (
     {
@@ -732,7 +717,6 @@
     "dlc.stop",
     () => {
       refs.runBtn.innerText = "Start";
-      refs.ambushBtn.innerText = "Standby mode";
       clearTimeout(timer);
       timer = null;
     },
@@ -740,66 +724,6 @@
     "dlc.stop.default",
   );
 
-  let lastMsgID = "";
-  // 开始伏击
-  eventBus.on(
-    "dlc.ambush",
-    () => {
-      pressDownVote();
-      Toast("Standby mode");
-      refs.ambushBtn.innerText = "Stop";
-      // Ignore previous messages
-      const messagesList = window.frames.chatframe.contentDocument.getElementsByTagName("yt-live-chat-text-message-renderer");
-      if (messagesList && messagesList.length > 0) {
-        lastMsgID = messagesList[messagesList.length - 1].id;
-      }
-      const nextTimer = () => {
-        timer = setTimeout(() => {
-          let attack = false;
-          const autoAttackTarget = "";
-          // const autoAttackTarget = "UltramanAce";
-          const messagesList = window.frames.chatframe.contentDocument.getElementsByTagName("yt-live-chat-text-message-renderer");
-          for (let i = messagesList.length - 1; i >= 0; i--) {
-            const message = messagesList[i];
-            if (message.id == lastMsgID) {
-              break;
-            }
-            const authorName = message.getElementsByTagName("yt-live-chat-author-chip")[0].children["author-name"].innerText;
-            console.log(`author: ${authorName}`);
-            console.log(`autoAttackTarget: ${autoAttackTarget}`);
-            if (false) {
-              if (refs.runBtn.innerText === "Start") {
-                const s = message.textContent || message.innerText;
-                Toast(`${String(new Date())}Find Target！${s}`);
-                attack = true;
-                refs.runBtn.click();
-              }
-            }
-          }
-          if (messagesList && messagesList.length > 0) {
-            lastMsgID = messagesList[messagesList.length - 1].id;
-          }
-          if (!attack) {
-            // console.log("目标还没出现...");
-            nextTimer();
-          }
-        }, 2000);
-      };
-      nextTimer();
-    },
-    {},
-    "dlc.ambush.default",
-  );
-  // 停止伏击
-  eventBus.on(
-    "dlc.retreat",
-    () => {
-      refs.ambushBtn.innerText = "伏击";
-      eventBus.emit("dlc.stop");
-    },
-    {},
-    "dlc.retreat.default",
-  );
   const splitter = {
     // 单句模式
     0: (text) => [text.substr(0, config.maxDanmakuLength)],
@@ -845,7 +769,6 @@
         splitMode,
         randomDanmaku,
       } = config;
-      pressDownVote();
 
       // 检查设置项
       if (!config.noValidate) {
@@ -864,7 +787,7 @@
         .reduce((list, data) => list.concat(data.list), localDanmakuList);
 
       if (!danmakuList.length) {
-        Toast("The current word list is empty！");
+        Toast("The current bullet list is empty!");
         return;
       }
 
@@ -945,21 +868,6 @@
             refs.runBtn = el;
           },
         ],
-        [
-          "button",
-          {
-            class: "dlc-btn",
-            $click: (ev) => {
-              ev.stopPropagation();
-              if (refs.ambushBtn.innerText === "Standby mode") eventBus.emit("dlc.ambush");
-              else eventBus.emit("dlc.retreat");
-            },
-          },
-          "伏击",
-          (el) => {
-            refs.ambushBtn = el;
-          },
-        ],
         version,
         [
           "span",
@@ -993,7 +901,7 @@
           name: "text",
           type: "textarea",
           props: {
-            placeholder: "Please enter the words you want to send.",
+            placeholder: "Enter the content to be launched here.",
             style: {
               width: "265px",
               height: "155px",
@@ -1003,7 +911,7 @@
           },
         }),
         ConfigField({
-          label: "Minimum waiting time(s):",
+          label: "Minimum interval time(s):",
           name: "minCycleSec",
           type: "input",
           props: {
@@ -1014,7 +922,7 @@
           },
         }),
         ConfigField({
-          label: "Maximum waiting time(s):",
+          label: "Maximum interval time(s):",
           name: "maxCycleSec",
           type: "input",
           props: {
@@ -1024,36 +932,36 @@
             style: { width: "48px", margin: "1px" },
           },
           helpDesc:
-                      "If the setting is less than the minimum waiting time, it is equivalent to not waiting randomly, and sending the Sentence with the minimum waiting time",
+                      "If the setting is less than the minimum interval time, it is a non-random interval, and the bullet is sent at the minimum interval time",
         }),
         ConfigField(
           {
-            label: "Sentence disturbance",
+            label: "character disturbance",
             name: "ammoRefine_Disturb",
             type: "input",
             props: { type: "checkbox" },
             valueProp: "checked",
-            helpDesc: "Randomly remove a character in the word to avoid sending the same word repeatedly, which makes it difficult to get on top chat",
+            helpDesc: "Randomly remove a character in the bullet to avoid sending the same ammunition repeatedly and making it difficult to get on top chat",
           },
         ),
         ConfigField(
           {
-            label: "Sentence removes capital letter punctuation",
+            label: "Remove capital letters and punctuation",
             name: "ammoRefine_ToLower",
             type: "input",
             props: { type: "checkbox" },
             valueProp: "checked",
-            helpDesc: "Convert all uppercase letters to lowercase, remove all punctuation to anti the Nightbot",
+            helpDesc: "To against Nightbot",
           },
         ),
         ConfigField(
           {
-            label: "Word refined (Local)",
+            label: "bullet refined (local)",
             name: "ammoRefine_Local",
             type: "input",
             props: { type: "checkbox" },
             valueProp: "checked",
-            helpDesc: "Wrod refined（Such as removing blocked words, changing Chinese punctuation, and replacing them regularly to increase the probability of word passing Nightbot",
+            helpDesc: "Change the Chinese punctuation, and replace the regular ones to against Nightbot",
           },
         ),
         /*
@@ -1069,20 +977,20 @@
         ),
         */
         // 不要用！！！会被判断成符号秒杀
-        /*
+
                   ConfigField(
                       {
-                          label: "字母转换为拉丁文",
+                          label: "Letters to Latin",
                           name: "ammoToLatin",
                           type: "input",
                           props: { type: "checkbox" },
                           valueProp: "checked",
-                          helpDesc: "用拉丁字符替换英文字母 会触发符号判定，被night bot秒杀",
+                          helpDesc: "It will trigger symbol judgment and ban by night bot. But is a good way to against user block words without Nightnot.",
                       },
                   ),
-                  */
-        ConfigField({
-          label: "Word refined strategy:",
+
+       /* ConfigField({
+          label: "弹药精制策略:",
           name: "ammoRefineStategy",
           type: "input",
           props: {
@@ -1092,7 +1000,9 @@
         }, () => {
           const { ammoRefineStategy } = config;
           console.log(`ammoRefineStategy: ${ammoRefineStategy}`);
+
         }),
+         */
         // ConfigField({
         //   label: "云精制网址:",
         //   name: "ammoRefineUrl",
@@ -1112,18 +1022,19 @@
         //     style: { width: "48px", margin: "1px" },
         //   },
         // }),
-        ConfigField({
-          label: "Block word processing:",
+        /*ConfigField({
+          label: "屏蔽词处理方式:",
           name: "ammoRefine_BanedWordMode",
           type: "select",
           children: [
-            { value: "0", text: "delete block word" },
-            { value: "1", text: "Disturbance block word" },
-            { value: "2", text: "Disguise blocking words (test)" },
+            { value: "0", text: "删除屏蔽词" },
+            { value: "1", text: "扰动屏蔽词" },
+            { value: "2", text: "伪装屏蔽词 (测试)" },
           ].map(({ text, value }) => ["option", { value }, text]),
           helpDesc:
-                      "Delete block word: directly delete the block word; disturb block word: randomly change a letter in the block word; disguise block word: activate the block word disguise",
+                      "删除屏蔽词: 把屏蔽词直接删除; 扰动屏蔽词: 随机改动屏蔽词中的一个字母; 伪装屏蔽词: 启动屏蔽词伪装, 在特殊战役时期允许解放使用",
         },
+
         (el) => {
           if (config.ammoRefine_Local !== true) el.classList.add("hide");
           eventBus.on(
@@ -1136,27 +1047,28 @@
             "dlc.setConfig.ammoRefine_Local.banedWordField",
           );
         }),
+          */
         ConfigField({
-          label: "Sentence segmentation:",
+          label: "Telling mode:",
           name: "splitMode",
           type: "select",
           children: [
-            { value: "2", text: "rotate pattern" },
-            { value: "0", text: "Single pattern" },
-            { value: "1", text: "Storytelling pattern" },
+            { value: "2", text: "Rotate mode" },
+            { value: "0", text: "Single mode" },
+            { value: "1", text: "Storytelling mode" },
           ].map(({ text, value }) => ["option", { value }, text]),
           helpDesc:
-                      "sentences Rotate:one row for one sentence；Single sentence pattern:Keep going；Story telling pattern: normal 200 charaters for a roll",
+                      "Rotate mode:A row for one bullet；Single mode:All in one bullet；Storytelling mode:Divide by storytelling limit",
         }),
         ConfigField(
           {
-            label: "Random mode:",
+            label: "Random Bullet:",
             name: "randomDanmaku",
             type: "input",
             props: { type: "checkbox" },
             valueProp: "checked",
             helpDesc:
-                          "Random mode: Whether to randomly select word from word list to send，only use in rotate pattern.Story telling pattern makes confusion.",
+                          "Random Bullet: Whether to randomly select bullets from the bullet list to send, only used for rotate mode; enabling content in storytelling mode will cause confusion",
           },
           (el) => {
             if (+config.splitMode !== 2) el.classList.add("hide");
@@ -1172,17 +1084,17 @@
           },
         ),
         ConfigField({
-          label: "No Validate:",
+          label: "Turn off configuration verification:",
           name: "noValidate",
           type: "input",
           props: { type: "checkbox" },
           valueProp: "checked",
           helpDesc:
-                      "No Validate: Means you can set minimum time to zero but it may crush",
+                      "You can set value to any number. But sometimes is will not work.",
         }),
         ConfigField(
           {
-            label: "Story telling limit:",
+            label: "storytelling limit:",
             name: "minDanmakuLength",
             type: "input",
             props: {
@@ -1191,7 +1103,7 @@
               style: { width: "48px", margin: "1px" },
             },
             helpDesc:
-                          "Story telling limit: for story telling pattern. When segmenting sentences, try to control the length above this.",
+                          "storytelling limit: only used for storytelling mode.When segmenting sentences, try to control the sentence length above this",
           },
           (el) => {
             if (+config.splitMode !== 1) el.classList.add("hide");
@@ -1208,7 +1120,7 @@
         ),
         ConfigField(
           {
-            label: "Storytelling segment symbol:",
+            label: "storytelling segmentation symbol:",
             name: "splitChar",
             type: "input",
             props: {
@@ -1217,7 +1129,7 @@
               style: { width: "48px", margin: "1px" },
             },
             helpDesc:
-                          "Storytelling segment symbol:When it is empty, the sentence will be segmented according to the Story telling limit",
+                          "storytelling segmentation symbol: In storytelling mode, the article is divided into multiple bullets with the configured symbol, and then merged into the bullet length above the lower limit of the storytelling length. When it is empty, the sentence is fixed at the lower limit of the storytelling length",
           },
           (el) => {
             if (+config.splitMode !== 1) el.classList.add("hide");
@@ -1232,14 +1144,14 @@
             );
           },
         ),
-        ConfigField(
+       /* ConfigField(
           {
-            label: "Internet-saving mode",
+            label: "省流模式",
             name: "lowConsume",
             type: "input",
             props: { type: "checkbox" },
             valueProp: "checked",
-            helpDesc: "delete the video to save the network traffic",
+            helpDesc: "只看聊天框，节省流量",
           },
           () => {
             const { lowConsume } = config;
@@ -1251,6 +1163,7 @@
             });
           },
         ),
+        */
         ConfigField(
           {
             label: "Auto stop",
@@ -1258,7 +1171,7 @@
             type: "input",
             props: { type: "checkbox" },
             valueProp: "checked",
-            helpDesc: "Auto stop",
+            helpDesc: "Auto stop when broadcast offline.",
           },
           () => {
             // const { autoStop } = config;
@@ -1281,10 +1194,10 @@
             });
           },
         ),
-        ConfigField(
+      /*  ConfigField(
           {
             label: h([
-              "Auto Start mode:",
+              "Full Automation:",
 
               [
                 "input",
@@ -1300,10 +1213,10 @@
                     setAndSave("fullAutomation", true);
 
                     if (window.location.href !== "https://www.youtube.com/") {
-                      Toast("You can only turn on monitoring on the Youtube homepage. Just go back to the homepage and refresh");
+                      Toast("Some times it will bug.");
                       return;
                     }
-                    Toast("Monitoring...");
+                    Toast("Waitng...");
                     loadLiveInfo(infoUrl, target);
                     apiTimer = setInterval(
                       () => loadLiveInfo(infoUrl, target, true),
@@ -1316,7 +1229,7 @@
             name: "infoUrl",
             type: "textarea",
             props: {
-              placeholder: "Broadcast monitoring address",
+              placeholder: "开播监控地址",
               style: {
                 width: "265px",
                 height: "40px",
@@ -1324,7 +1237,7 @@
                 whiteSpace: "pre",
               },
             },
-            helpDesc: "put broadcast address api here",
+            helpDesc: "填监控API地址，如果不知道是什么，去NGA翻独轮车发布贴",
           },
           (el) => {
             const { fullAutomation, infoUrl, lastLiveUrl } = config;
@@ -1346,11 +1259,10 @@
             }
             if (
               fullAutomation
-                && infoUrl !== ""
                 && window.location.href === "https://www.youtube.com/"
             ) {
               target.checked = true;
-              Toast("Monitoring...");
+              Toast("Waiting...");
               loadLiveInfo(infoUrl, target);
               apiTimer = setInterval(
                 () => loadLiveInfo(infoUrl, target, true),
@@ -1358,10 +1270,10 @@
               );
             }
           },
-        ),
-        ConfigField(
+        ),*/
+       /* ConfigField(
           {
-            label: "Broadcast Waiting Time(s)",
+            label: "Start Waiting Time(s)",
             name: "startWaitingTime",
             type: "input",
             props: {
@@ -1376,7 +1288,7 @@
             const waitingForRun = () => {
               const { startWaitingTime } = config;
               Toast(
-                `Auto Youtube Chat Sender will start after ${startWaitingTime}s`,
+                `It will be launch after${startWaitingTime} seconds.`,
                 "dlc-alert",
               );
               setTimeout(() => {
@@ -1388,8 +1300,8 @@
               eventBus.on("live.start", waitingForRun);
             }
           },
-        ),
-
+        ),*/
+/*
         ConfigField({
           label: h([
             [
@@ -1397,7 +1309,7 @@
               {
                 class: "dlc-btn",
                 $click: ({ target }) => {
-                  if (target.innerText !== "Timing start") return;
+                  if (target.innerText !== "定时启动") return;
                   const { startTime } = config;
                   const timeStamp = Date.parse(new Date(startTime));
                   let timeRemain = timeStamp - new Date().getTime();
@@ -1412,14 +1324,14 @@
                         startTimer();
                       } else {
                         eventBus.emit("dlc.run");
-                        target.innerText = "Timing start";
+                        target.innerText = "定时启动";
                       }
                     }, 1000);
                   };
                   startTimer();
                 },
               },
-              "Timing start",
+              "定时启动",
             ],
           ]),
           name: "startTime",
@@ -1429,9 +1341,9 @@
             min: 1,
             style: { width: "150px", margin: "1px" },
           },
-           // Toast("The current word list is empty！");
           // helpDesc: '输入时间定时启动，格式举例：2020-10-21 17:31:00',
         }),
+
         ConfigField({
           label: h([
             [
@@ -1454,14 +1366,14 @@
                         stopTimer();
                       } else {
                         eventBus.emit("dlc.stop");
-                        target.innerText = "Timing end";
+                        target.innerText = "定时结束";
                       }
                     }, 1000);
                   };
                   stopTimer();
                 },
               },
-              "Timing end",
+              "定时结束",
             ],
           ]),
           name: "stopTime",
@@ -1472,7 +1384,9 @@
             style: { width: "150px", margin: "1px" },
           },
           // helpDesc: '输入时间定时结束，格式举例：2020-10-21 17:31:00',
-        }),
+        })
+          ,*/
+
         h([
           [
             "button",
@@ -1480,10 +1394,10 @@
               class: "dlc-btn",
               $click: () => {
                 localStorage.setItem("duluncheCfg", JSON.stringify(config));
-                Toast("Save successful");
+                Toast("保存成功");
               },
             },
-            "Save the set up",
+            "Save settings",
           ],
         ]),
         h([
@@ -1495,19 +1409,20 @@
                 modManager();
               },
             },
-            "MOD management",
+            "MOD Management",
           ],
         ]),
+    /*
         ConfigField({
           label: h([
-            "load wating words:",
+            "加载远程弹幕库:",
             [
               "button",
               {
                 class: "dlc-btn",
                 $click: ({ target }) => {
-                  if (target.innerText !== "Update") return;
-                  target.innerText = "Updating...";
+                  if (target.innerText !== "更新") return;
+                  target.innerText = "更新中...";
                   const { remoteDanmakuBase } = config;
                   const urlList = remoteDanmakuBase
                     .split("\n")
@@ -1518,7 +1433,7 @@
                   const loaded = [];
                   const loadFinish = () => {
                     eventBus.emit("setRef.remoteDanmakuConfig", loaded);
-                    target.innerText = "Update";
+                    target.innerText = "更新";
                     Toast(
                       h(
                         "pre",
@@ -1537,7 +1452,7 @@
                       .then((data) => data.json())
                       .then((data) => {
                         if (!data) {
-                          loaded.push({ error: `[Update fail]${url}` });
+                          loaded.push({ error: `[获取失败]${url}` });
                           return;
                         }
                         if (Array.isArray(data.extends)) {
@@ -1547,7 +1462,7 @@
                       })
                       .catch((err) => {
                         console.error(err);
-                        loaded.push({ error: `[Update fail]${url}` });
+                        loaded.push({ error: `[获取失败]${url}` });
                       })
                       .finally(() => {
                         queued.delete(url);
@@ -1562,14 +1477,14 @@
             [
               "span",
               {},
-              "(unload)",
+              "(未加载弹幕库)",
               (el) => {
                 eventBus.on("setRef.remoteDanmakuConfig", ({ detail }) => {
                   const totalLength = detail.reduce(
                     (total, data) => total + ((data && data.list.length) || 0),
                     0,
                   );
-                  el.innerText = `(load${totalLength}条)`;
+                  el.innerText = `(已加载${totalLength}条)`;
                 });
               },
             ],
@@ -1577,7 +1492,7 @@
           name: "remoteDanmakuBase",
           type: "textarea",
           props: {
-            placeholder: "Support multiple URLs, each line",
+            placeholder: "支持多个网址，每个一行",
             style: {
               width: "265px",
               height: "70px",
@@ -1585,8 +1500,8 @@
               whiteSpace: "pre",
             },
           },
-          helpDesc: "Load the word list from the specified address, support adding multiple addresses, each line; the waiting word list will be added to the local word list; the updated word will take effect the next time it is dispatched",
-        }),
+          helpDesc: "从指定地址加载弹幕列表，支持添加多个地址，每个一行；远程弹幕列表会添加到本地弹幕列表后；更新的弹幕会在下次Start时生效",
+        }),*/
       ],
       (el) => {
         refs.configFieldContainer = el;
@@ -1606,16 +1521,16 @@
         if (!tip) {
           tip = true;
           refineJson = getJSON();
-          Toast(`Please separate each sentence of the rotate pattern with a carriage return. For your own account, it is recommended to adjust the speaking interval to more than 8000;${refineJson.announcement}`);
+          Toast(`Use ENTER to separate each sentence in rotate mode.`);
         }
       },
     },
-    "Initialing...",
+    "Initializing...",
     (el) => {
       eventBus.on(
         "dlc.ready",
         () => {
-          el.textContent = "Console";
+          el.textContent = "Dashboard";
         },
         { once: true },
         "dlc.ready.default",
@@ -1648,7 +1563,7 @@
       });
     } catch (e) {
       console.error(e);
-      Toast("The extended script failed to run, and the error message has been output to the console");
+      Toast("Extend script fail.");
     }
   }
 
@@ -1815,111 +1730,17 @@
       {
         class: "dlc-btn",
         $click: () => {
-          Toast("Old version");
+          Toast("old version extention is change into MOD management.");
         },
       },
-      "Edit extended script",
+      "Edit extend script",
     ],
     [
       "pre",
       {},
       `
-    API开发指南，在window.dulunche获取引用，TS定义如下
-    /**
-    * 独轮车配置，这是一个Proxy对象，你可以直接获取和设置配置，通过这个对象设置配置项时，也会向eventBus提交一个emit(\`setConfig.\${配置项名称}\`, value)事件
-    * config对象在每次启动时会保存到localStorage的duluncheCfg中
-    */
-    interface ConfigType {
-    /** 断句方式0: 单句模式 1: 说书模式 2: 多句转轮 */
-    splitMode: number;
-    /** 最小发送间隔（秒） */
-    minCycleSec: number;
-    /** 最大发送间隔（秒） */
-    maxCycleSec: number;
-    /** 是否随机发送 */
-    randomDanmaku: boolean;
-    /** 发送消息列表 */
-    text: string;
-    /** 最大弹幕字数限制 */
-    maxDanmakuLength: number;
-    /** 最小弹幕长度 */
-    minDanmakuLength: number;
-    /** 断句符 */
-    splitChar: string;
-    /** 远程弹幕库 */
-    remoteDanmakuBase: string;
-    /** 不校验配置，即不运行configValidators, 设为true是，所有配置项都不会限制输入范围 */
-    noValidate: boolean;
-    /** 扩展脚本，独轮车初始化前会eval执行这个脚本 */
-    extension: string;
-
-    [key: string]: any;
-    }
-
-    /**
-    * 独轮车事件总线，可以在这里监听和触发各种事件
-    */
-    interface DuluncheEventBus {
-    /** 用来绑定事件的EventTarget对象，通常不需要直接操作这个对象 */
-    ee: EventTarget;
-    /** 监听事件，addEventListener, 会返回一个key用于从fnMap获取监听器引用，这个key可以手动指定，默认是一个Symbol */
-    on<T = any>(
-    type: string,
-    fn: (detail: CustomEvent<T>) => void,
-    opt?: boolean | AddEventListenerOptions, fnKey?: string | Symbol
-    ): string | Symbol;
-    /** 取消监听事件，removeEventListener */
-    off<T = any>(type: string, fn: (detail: CustomEvent<T>) => void, opt?: boolean | AddEventListenerOptions): any;
-    /** 触发事件，dispatchEvent */
-    emit<T = any>(type: string, detail: T): void;
-    /** 已经注册的事件监听器map，可以通过key拿到事件监听器的引用 */
-    fnMap: Map<string | Symbol, (detail: CustomEvent) => void>;
-    }
-
-    /** 独轮车内部一些引用，修改它们可以改变独轮车原本的一些行为 */
-    interface DuluncheRefs {
-    /** 配置项校验器，独轮车会在dlc.run开始时依次执行数组中的每个函数 */
-    configValidators: Array<() => void>
-    /** 独轮车控制台窗口dom引用 */
-    duluncheWnd: HTMLDivElement;
-    /** 独轮车配置列表dom引用 */
-    configFieldContainer: HTMLDivElement;
-    /** 弹幕生成器，独轮车通过调用danmakuGener.next().value来获取下一条要发送的弹幕，弹幕生成器只能在独轮车启动状态下被替换，最早是dlc.run的下一次事件循环 */
-    danmakuGener: GeneratorFunction;
-    /** 独轮车帮助信息内容 */
-    helpContent: any;
-    /** 初始化函数，若没有返回true则会等待1秒后重新执行，初始化成功会触发dlc.ready事件，默认行为是获取油管直播页聊天输入框和发送按钮引用，可以是异步函数 */
-    init: () => boolean | Promise<boolean>;
-
-    [key: string]: any;
-    }
-
-    interface Window {
-    dulunche: {
-    config: ConfigType;
-    eventBus: DuluncheEventBus,
-    refs: DuluncheRefs,
-
-    /** 组件和渲染器，建议看过源码后使用 */
-    components: {
-    Toast: (children: string | Node, singletonId?: string) => void;
-    ConfigField: (...args: any) => HTMLDivElement;
-    h: (...args: any) => Node;
-    }
-    };
-    }
-
-    /**
-    eventBus 默认的事件列表, 你可以通过emit主动触发事件，或通过on监听事件
-    事件名 | 事件 | detail参数类型 | detail参数说明
-    dlc.run | 启动独轮车 | void | -
-    dlc.stop | 停止独轮车 | void | -
-    dlc.sendMsg | 发送消息 | string | 发送的内容
-    dlc.ready | 初始化成功 | void | -
-    setConfig.\${configKey} | 修改配置 | any | 修改的配置值
-    live.start| 监控到直播已经开始 | void
-    live.stop | 监控到直播已经结束 | void
-    */
+   Original Developer:
+   https://github.com/zhenshiluosuo/Storyteller-AutoBarrageForDouyuTV
     `,
     ],
   ];
