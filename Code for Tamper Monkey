@@ -1,12 +1,12 @@
 // ==UserScript==
 // @icon          https://www.youtube.com/favicon.ico
 // @name          Auto Youtube Chat Sender0.2
-// @author        necros & dislido
+// @author        qazxws-hue
 // @description   youtube  Chat Sender
 // @match         *://www.youtube.com/*
 // @version      0.2
 // @grant         none
-// @namespace
+// @namespace     https://github.com/qazxws-hue/Youtube-Auto-Chat-Sender
 // ==/UserScript==
 
 {
